@@ -1,0 +1,3 @@
+[submodule "libspecseek"]
+	path = libspecseek
+	url = https://github.com/xhcisucks/libspecseek

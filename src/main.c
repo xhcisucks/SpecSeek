@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
-#include <unistd.h>
 #include "args.h"
 
 #define ANSI_RESET   "\033[0m"

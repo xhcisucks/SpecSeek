@@ -3,7 +3,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#ifdef _WIN32
+#include <io.h>
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif
 #include <stddef.h>
 
 static int get_feature_value(const specseek_cpu_features *f, const char *name) {
@@ -210,7 +216,18 @@ static int get_feature_value(const specseek_cpu_features *f, const char *name) {
 }
 
 static int stdout_is_tty(void) {
+#ifdef _WIN32
+    if (!_isatty(_fileno(stdout))) return 0;
+
+    // Older consoles can display color with a bit more setup
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode;
+    if (GetConsoleMode(out, &mode))
+        SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    return 1;
+#else
     return isatty(fileno(stdout));
+#endif
 }
 
 specseek_args args_parse(int argc, char **argv) {
