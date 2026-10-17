@@ -1,7 +1,6 @@
 sysroot/
 external/
 bin/
-libspecseek
 
 #macos bullshite
 .DS_Store
