@@ -222,9 +222,10 @@ static int stdout_is_tty(void) {
     // Older consoles can display color with a bit more setup
     HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
     DWORD mode;
-    if (GetConsoleMode(out, &mode))
-        SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
-    return 1;
+    if (!GetConsoleMode(out, &mode))
+        return 0;
+
+    return SetConsoleMode(out, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0;
 #else
     return isatty(fileno(stdout));
 #endif

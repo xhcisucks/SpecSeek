@@ -1,25 +1,78 @@
 TARGET      = specseek
 BIN_DIR     = bin
-OBJ_DIR     = $(BIN_DIR)/obj
-
 VENDOR_DIR  = libspecseek
-LIB_BIN_DIR = bin/elf
 
+#host platform
 ifeq ($(OS),Windows_NT)
-CC         := gcc
-EXE        := .exe
+HOST       := win
 else
 UNAME_S    := $(shell uname -s)
-UNAME_M    := $(shell uname -m)
-
-# you can build ON apple silicon but you cant run on apple silicon as
-# specseek relies on CPUID which ARM doesn't implement
-ifeq ($(UNAME_S)-$(UNAME_M),Darwin-arm64)
-CC         := clang -arch x86_64
+ifeq ($(UNAME_S),Darwin)
+HOST       := mac
 else
+HOST       := elf
+endif
+endif
+
+#t target platform
+PLATFORM   ?= $(HOST)
+BITS       ?= 64
+
+NAME        = $(TARGET)_$(PLATFORM)_$(BITS)
+OBJ_DIR     = $(BIN_DIR)/obj/$(PLATFORM)_$(BITS)
+LIB_BIN_DIR = bin/$(PLATFORM)_$(BITS)
+ARCH        = -m$(BITS)
+
+ifeq ($(PLATFORM),win)
+EXE        := .exe
+ifneq ($(HOST),win)
+
+ifeq ($(BITS),32)
+CC         := i686-w64-mingw32-gcc
+AR         := i686-w64-mingw32-ar
+else
+CC         := x86_64-w64-mingw32-gcc
+AR         := x86_64-w64-mingw32-ar
+endif
+else
+
 CC         := gcc
 endif
+
+else ifeq ($(PLATFORM),mac)
 EXE        :=
+ifeq ($(BITS),32)
+$(error macOS can't run 32 bit binaries, use BITS=64)
+endif
+ifeq ($(HOST),mac)
+# you can build ON apple silicon but you cant run on apple silicon as
+# specseek relies on CPUID which ARM doesn't implement
+# rosetta can emulate it though
+
+CC         := clang -arch x86_64
+else
+# cross compiling, zig ships the macOS headers/libs so no SDK needed
+CC         := zig cc -target x86_64-macos -fno-sanitize=undefined
+AR         := zig ar
+endif
+
+else ifeq ($(PLATFORM),elf)
+EXE        :=
+ifeq ($(HOST),elf)
+# 32 bit needs gcc-multilib installed too
+CC         := gcc
+else
+
+ifeq ($(BITS),32)
+CC         := zig cc -target x86-linux-gnu -fno-sanitize=undefined
+else
+CC         := zig cc -target x86_64-linux-gnu -fno-sanitize=undefined
+endif
+AR         := zig ar
+endif
+
+else
+$(error unknown PLATFORM '$(PLATFORM)', use win, mac or elf)
 endif
 
 # Building on windows
@@ -35,40 +88,49 @@ endif
 
 rwildcard   = $(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
 
-C_FLAGS     = -Wall -Wextra -Werror -Wno-unused-parameter -m64 \
+C_FLAGS     = -Wall -Wextra -Werror -Wno-unused-parameter $(ARCH) \
               -Iinclude \
               -I$(VENDOR_DIR)
 
-LD_FLAGS    = -m64 -L$(VENDOR_DIR)/$(LIB_BIN_DIR) -lspecseek
+LD_FLAGS    = $(ARCH) -L$(VENDOR_DIR)/$(LIB_BIN_DIR) -lspecseek
 
 SRCS        = $(call rwildcard,src,*.c)
 OBJS        = $(patsubst src/%.c,$(OBJ_DIR)/%.o,$(SRCS))
 
-all: $(TARGET)
+HAVE_ZIG   := $(shell zig version 2>$(if $(filter win,$(HOST)),NUL,/dev/null))
+ifeq ($(HOST),mac)
+ALL_TARGETS := mac64 win32 win64 $(if $(HAVE_ZIG),elf32 elf64)
+else ifeq ($(HOST),elf)
+ALL_TARGETS := elf32 elf64 win32 win64 $(if $(HAVE_ZIG),mac64)
+else
+ALL_TARGETS := win32 win64
+endif
 
-$(TARGET): lib $(OBJS)
+all: $(ALL_TARGETS)
+
+build: lib $(OBJS)
 	@$(call MKDIR,$(BIN_DIR))
-	$(CC) $(OBJS) $(LD_FLAGS) -o $(BIN_DIR)/$(TARGET)$(EXE)
+	$(CC) $(OBJS) $(LD_FLAGS) -o $(BIN_DIR)/$(NAME)$(EXE)
 
 $(OBJ_DIR)/%.o: src/%.c
 	@$(call MKDIR,$(dir $@))
 	$(CC) $(C_FLAGS) -c $< -o $@
 
 lib:
-	$(MAKE) -C $(VENDOR_DIR) build CC="$(CC)" AR="$(AR)" LIB_BIN_DIR=$(LIB_BIN_DIR)
+	$(MAKE) -C $(VENDOR_DIR) build CC="$(CC) $(ARCH)" AR="$(AR)" LIB_BIN_DIR=$(LIB_BIN_DIR)
 
-# you will need mingw-w64 for this
-windows:
-	$(MAKE) CC=x86_64-w64-mingw32-gcc AR=x86_64-w64-mingw32-ar EXE=.exe \
-	        BIN_DIR=bin/win LIB_BIN_DIR=bin/win
+win32 win64 mac64 elf32 elf64:
+	$(MAKE) build PLATFORM=$(patsubst %32,%,$(patsubst %64,%,$@)) BITS=$(patsubst win%,%,$(patsubst mac%,%,$(patsubst elf%,%,$@)))
 
-build: $(TARGET)
+win: win32 win64
+mac: mac64
+elf: elf32 elf64
 
-run: $(TARGET)
-	$(call RUN,$(BIN_DIR)/$(TARGET)$(EXE))
+run: build
+	$(call RUN,$(BIN_DIR)/$(NAME)$(EXE))
 
 clean:
 	@$(call RMDIR,bin)
 	$(MAKE) -C $(VENDOR_DIR) clean
 
-.PHONY: all build clean lib run windows
+.PHONY: all build clean lib run win mac elf win32 win64 mac64 elf32 elf64

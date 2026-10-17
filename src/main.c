@@ -41,7 +41,7 @@ static void box_mid(const char *title) {
 }
 
 static void box_bot(void) {
-    printf("%s\n", g_reset);
+    printf("\n");
 }
 
 static void kv(const char *key, const char *fmt, ...) {
