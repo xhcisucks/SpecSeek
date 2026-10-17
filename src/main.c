@@ -381,5 +381,9 @@ int main(int argc, char **argv) {
         print_cpu_features_minimal(&features);
     }
 
+    if (args.pause) {
+        args_wait_for_exit();
+    }
+
     return 0;
 }

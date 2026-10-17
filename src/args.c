@@ -231,8 +231,24 @@ static int stdout_is_tty(void) {
 #endif
 }
 
+static int launched_in_own_console(void) {
+#ifdef _WIN32
+    DWORD pids[2];
+    return GetConsoleProcessList(pids, 2) == 1;
+#else
+    return 0;
+#endif
+}
+
+void args_wait_for_exit(void) {
+    printf("\nPress Enter to exit...");
+    fflush(stdout);
+    getchar();
+}
+
 specseek_args args_parse(int argc, char **argv) {
     specseek_args result = {0};
+    result.pause = launched_in_own_console();
 
     if (!stdout_is_tty()) {
         result.no_ansi = 1;
@@ -243,6 +259,8 @@ specseek_args args_parse(int argc, char **argv) {
             result.no_ansi = 1;
         } else if (strcmp(argv[i], "--verbose") == 0) {
             result.verbose = 1;
+        } else if (strcmp(argv[i], "--pause") == 0) {
+            result.pause = 1;
         } else if (strcmp(argv[i], "--feature") == 0) {
             result.feature_mode = 1;
             result.features = (const char **)(argv + i + 1);
